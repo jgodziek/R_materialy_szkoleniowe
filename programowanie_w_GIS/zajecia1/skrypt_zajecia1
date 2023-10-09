@@ -24,7 +24,6 @@ c = a - b
 print(c)
 c
 
-
 #różnica między operatorami przypisania '=' a '<-'
 mean(x = 1:10)
 x

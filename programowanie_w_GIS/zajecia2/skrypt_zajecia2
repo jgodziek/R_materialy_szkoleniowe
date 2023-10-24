@@ -1,0 +1,260 @@
+#wczytanie pakietu/biblioteki
+library(sf)
+
+
+#różnica między operatorami przypisania '=' a '<-'
+mean(x = 1:10)
+x
+
+mean(x <- 1:10)
+x
+
+
+#wczytywanie pliku shapefile
+?st_read
+gzm_gminy <- st_read('sciezka/dostepu/do/pliku/shp/z/gminami_gzm/gminy_gzm.shp')
+#uwaga! w ścieżce dostępu muszą być slashe (/), nie backslashe (/)
+#/ na / można zamienić przy użyciu skrótu ctrl+F (po zaznaczeniu ścieżki dostępu)
+
+#sprawdzenie informacji o warstwie (układ współrzędnych, tabela atrybutów)
+gzm_gminy
+
+#wyświetlenie geometrii warstwy
+plot(gzm_gminy)
+
+#sprawdzenie klasy obiektów
+class(gzm_gminy)
+
+#dostęp do wartości z określonej kolumny tabeli atrybutów
+gzm_gminy$jpt_nazwa_
+
+#wyświetlenie listy z nazwami kolumn
+colnames(gzm_gminy)
+
+#sprawdzenie liczby obiektów
+nrow(gzm_gminy)
+
+#sprawdzenie typów danych w poszczególnych kolumnach
+str(gzm_gminy)
+
+#wybranie kolumny wg numeru
+gzm_gminy[,3]
+
+#wybranie wiersza wg numeru
+gzm_gminy[3,]
+
+
+#wybranie danych z kolumny i wiersza wg numeru
+#[nr wiersza, nr kolumny]
+gzm_gminy[23,3]
+
+#wybieranie wiersza wg nazwy miejscowości
+gzm_gminy[gzm_gminy$jpt_nazwa_ == 'Mikołów', ]
+
+#wybieranie wierszy wg nazw wielu miejscowości
+gzm_gminy[gzm_gminy$jpt_nazwa_ %in% c('Mikołów', 'Katowice', 'Sosnowiec'), ]
+
+#wybieranie wiersza wg nazwy miejscowości plus utworzenie nowego obiektu
+gmina <- gzm_gminy[gzm_gminy$jpt_nazwa_ == 'Mikołów', ]
+
+gmina #sprawdzenie obiektu
+
+#wyświetlenie geometrii
+plot(gmina)
+
+#wyświetlenie informacji o układzie współrzędnych
+st_crs(gmina)
+
+#zmiana układu współrzędnych na inny
+#układ współrzędnych 2000
+#https://pl.wikipedia.org/wiki/Uk%C5%82ad_wsp%C3%B3%C5%82rz%C4%99dnych_2000 
+?st_transform
+gmina <- st_transform(x = gmina, crs = 2177)
+
+gmina
+st_crs(gmina)
+
+#eksport granic wybranej gminy do pliku shp
+st_write(gmina, 'sciezka/dostepu/do/pliku/gmina.shp')
+
+
+#obliczenie powierzchni dla każdej gminy
+?st_area
+
+pow <- st_area(gzm_gminy)
+pow
+
+#obliczenie powierzchni dla każdej gminy jako dodatkowej kolumny w tabeli atrybutów
+gzm_gminy$pow_m2 <- st_area(gzm_gminy)
+
+#sprawdzenie typów danych dla każdej kolumny
+str(gzm_gminy)
+
+#zamiana m2 na km2
+gzm_gminy$pow_km2 <- gzm_gminy$pow_m2/1000000
+
+#zmiana typu danych kolumny 'pow_km2' na typ 'numeric'
+gzm_gminy$pow_km2 <- as.numeric(gzm_gminy$pow_km2)
+str(gzm_gminy)
+
+
+library(lwgeom)
+#obliczenie obwodu każdej gminy
+gzm_gminy$obwod_m <- st_perimeter(gzm_gminy)
+
+#usunięcie kolumny z tabeli atrybutóW
+library(dplyr)
+gzm_gminy <- select(gzm_gminy, -c(pow_m2))
+gzm_gminy <- select(gzm_gminy, -c(obwod_m))
+
+#to samo, w jednej linii kodu
+gzm_gminy <- select(gzm_gminy, -c(pow_m2, obwod_m))
+
+
+#wiele operacji w jednej linii kodu:
+#1) obliczenie obwodu dla każdej gminy
+#2) zamiana kolumny na typ 'numeric'
+#3) zamiana wartości obwodu z metróW na kilometry
+gzm_gminy$obwod_km <- as.numeric(st_perimeter(gzm_gminy)/1000)
+
+
+#FILTROWANIE DANYCH cd.
+
+#proste zapytanie z operatorem porównania
+#biblioteka 'base'
+gzm_gminy_sel <- gzm_gminy[gzm_gminy$pow_km2 > 100, ]
+plot(gzm_gminy_sel)
+plot(gzm_gminy_sel$geometry) #wyświetlenie tylko geometrii objektów
+
+#biblioteka 'dplyr' (install.packages('dplyr'); library(dplyr))
+gzm_gminy_sel <- gzm_gminy %>% filter(pow_km2 < 50)
+plot(gzm_gminy_sel$geometry)
+
+
+#zapytania złożone - warunki logiczne AND i OR
+# |  - OR (lub)
+# &  - AND (i)
+
+
+#sprawdzenie podstawowych statystyk dla kolumn: 'pow_km2' i 'obwod_km'
+summary(gzm_gminy$pow_km2)
+summary(gzm_gminy$obwod_km)
+
+
+#operator | (lub)
+#biblioteka 'base'
+gzm_gminy_sel <- gzm_gminy[(gzm_gminy$pow_km2 > 100)|(gzm_gminy$pow_km2 < 50), ]
+#biblioteka 'sf', wyświetlanie kartogramu dla wartości jednego wybranego atrybutu
+plot(gzm_gminy_sel['pow_km2'])
+
+#biblioteka 'dplyr'
+gzm_gminy_sel <- gzm_gminy %>% filter(pow_km2 < 40 | pow_km2 < 120)
+#biblioteka 'sf', wyświetlanie kartogramu dla wartości jednego wybranego atrybutu
+plot(gzm_gminy_sel['pow_km2'])
+
+
+#operator & (i)
+#biblioteka 'base'
+gzm_gminy_sel <- gzm_gminy[(gzm_gminy$pow_km2 > 100) & (gzm_gminy$obwod_km > 80), ]
+#biblioteka 'sf', wyświetlanie kartogramu dla wartości jednego wybranego atrybutu
+plot(gzm_gminy_sel['pow_km2'])
+
+#biblioteka 'dplyr'
+gzm_gminy_sel <- gzm_gminy %>% filter(pow_km2 < 30 & obwod_km < 25)
+#biblioteka 'sf', wyświetlanie kartogramu dla wartości jednego wybranego atrybutu
+plot(gzm_gminy_sel['pow_km2'])
+
+
+#pętla programistyczna FOR
+
+nazwy_gmin <- gzm_gminy$jpt_nazwa_
+
+for (nazwa in nazwy_gmin){ #dla każdej nazwy zawartej w wektorze 'nazwy gmin'
+  print(nazwa) #drukuj nazwę
+}
+
+
+
+#Przykład 1
+#Cel: Zapisanie każdej gminy jako osobny shapefile.
+
+#Etapy realizacji
+#Dla każdej gminy:
+#1) wybierz gminę i utwórz z niej nową warstwę
+#2) Zapisz utworzoną nową warstwę do wybranego folderu.
+#   -> Ustaw nazwę pliku shp jako nazwę gminy (z polskimi znakami)
+
+
+
+#wczytanie ścieżki do zapisu plików do zmiennej 'sciezka'
+sciezka <- 'D:/JG/IEDS/_Dydaktyka/2023_24_sem_zimowy/programowanie_w_GIS/dane/gzm_gminy_shp_osobno'
+
+#powtarzanie operacji (iteracja) dla każdej gminy
+1:nrow(gzm_gminy)
+
+#dostęp do całego wiersza oznaczającego pojedynczą gminę
+gzm_gminy[1, ]
+plot(gzm_gminy[1, ]) #wyświetlenie geometrii
+
+#dostęp do nazwy pojedynczej gminy
+gzm_gminy$jpt_nazwa_[1]
+
+#test ścieżki zapisu plików shp z granicami pojedynczych gmin
+paste0(sciezka, '/', gzm_gminy$jpt_nazwa_[1], '.shp')
+
+#pętla FOR
+for (i in 1:nrow(gzm_gminy)){
+  gmina <- gzm_gminy[i, ] #wybranie i-tej gminy do osobnego obiektu pakietu sf
+  st_write(gmina, paste0(sciezka, '/', gzm_gminy$jpt_nazwa_[i], '.shp')) #zapisanie i-tej gminy
+}
+
+
+
+#Przykład 2
+#Cel:  Zapisanie każdej gminy jako osobny shapefile.
+#      Nazwa shapefile musi być bez polskich znaków, a spacje muszą zostać zamienione na '_'.
+
+sciezka <- 'D:/JG/IEDS/_Dydaktyka/2023_24_sem_zimowy/programowanie_w_GIS/dane/gzm_gm_shp_bpz'
+
+#utworzenie nowej kolumny, w której będą nazwy gmin bez polskich znaków
+gzm_gminy$nazwa_bpz <- gzm_gminy$jpt_nazwa_ #podstawienie wartości z kolumny 
+
+library(stringr) #biblioteka do operacji na ciągach znakowych
+#usuniecie polskich znaków
+gzm_gminy$nazwa_bpz <- gzm_gminy$nazwa_bpz %>% str_replace_all(
+  c('ą' = 'a', 'ę' = 'e', 'ó' = 'o',
+    'Ś' = 'S', 'ś' = 's', ' ' = '_',
+    'ń'= 'n', 'ł' = 'l', 'Ł' = 'L',
+    'ż' = 'z', 'ź' = 'z'))
+
+
+#pętla FOR
+for (i in 1:nrow(gzm_gminy)){
+  gmina <- gzm_gminy[i, ] #wybranie i-tej gminy do osobnego obiektu pakietu sf
+  st_write(gmina, paste0(sciezka, '/', gzm_gminy$nazwa_bpz[i], '.shp')) #zapisanie i-tej gminy
+}
+
+
+
+
+#WIZUALIZACJA
+#przygotowanie prostej wizualizacji danych w oparciu o bibliotekę 'sf'
+?plot #dokumentacja
+
+
+plot(gzm_gminy['pow_km2'], #wyświetlanie kartogramu dla wartości jednego wybranego atrybutu
+     breaks = c(25, 50, 75, 100), #ustalenie przedziałów kartogramu
+     axes = TRUE) #dodanie opisu współrzędnych
+
+
+plot(gzm_gminy['pow_km2'], 
+     breaks = 'jenks', #metoda ustalenia przedziałóW: 'jenks'
+     main = 'Powierzchnia gmin w GZM') #podpis wykresu
+
+
+plot(gzm_gminy['pow_km2'], 
+     breaks = 'jenks', #metoda ustalenia przedziałóW: 'jenks'
+     main = 'Powierzchnia gmin w GZM', #podpis wykresu)
+     axes = T, #dodanie opisu współrzędnych
+     key.pos = 4) #ustawienie pozycji legendy
+

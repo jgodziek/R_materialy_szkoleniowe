@@ -1,7 +1,10 @@
 library(sf)
+library(dplyr)
 
 #ustawienie bieżącej ścieżki dostępu (working directory)
 setwd('ścieżka/dostępu/do/twojego/folderu')
+setwd('D:/JG/IEDS/_Dydaktyka/2023_24_sem_zimowy/programowanie_w_GIS/dane')
+
 
 getwd() #wyświetlenie bieżącej ścieżki dostępu
 
@@ -20,15 +23,27 @@ gzm_gminy$pow_km2 <- gzm_gminy$pow_m2/1000000 #km2
 
 
 #obliczenie obwodu każdej gminy
-gzm_gminy$obwod_m <- lwgeom::st_perimeter(gzm_gminy) #m
+gzm_gminy$obwod_m <- as.numeric(lwgeom::st_perimeter(gzm_gminy)) #m
 gzm_gminy$obwod_km <- gzm_gminy$obwod_m/1000 #km
 
 #usunięcie kolumny z tabeli atrybutóW
 gzm_gminy <- select(gzm_gminy, -c(pow_m2))
 gzm_gminy <- select(gzm_gminy, -c(obwod_m))
 
-#to samo, w jednej linii kodu
+#usuwanie dwóch kolumn w jednej linii kodu (to samo co linie 30 i 31)
 gzm_gminy <- select(gzm_gminy, -c(pow_m2, obwod_m))
+
+
+#utworzenie nowej kolumny, w której będą nazwy gmin bez polskich znaków
+gzm_gminy$nazwa_bpz <- gzm_gminy$jpt_nazwa_ #podstawienie nazw z polskimi znakami z kolumny 
+
+library(stringr) #biblioteka do operacji na ciągach znakowych
+#usuniecie polskich znaków
+gzm_gminy$nazwa_bpz <- gzm_gminy$nazwa_bpz %>% str_replace_all(
+  c('ą' = 'a', 'ę' = 'e', 'ó' = 'o',
+    'Ś' = 'S', 'ś' = 's', ' ' = '_',
+    'ń'= 'n', 'ł' = 'l', 'Ł' = 'L',
+    'ż' = 'z', 'ź' = 'z'))
 
 
 #zapisanie warstwy gmin z obliczoną powierzchnią i obwodem
@@ -166,3 +181,57 @@ for (i in 1:nrow(gzm_gminy)){
   gmina <- gzm_gminy[i, ] #wybranie i-tej gminy do osobnego obiektu pakietu sf
   st_write(gmina, paste0(sciezka, '/', gzm_gminy$nazwa_bpz[i], '.shp')) #zapisanie i-tej gminy
 }
+
+
+
+#wyrażenie warunkowe IF
+#jeśli dane obiekty spełniają określony warunek to wykonaj dany fragment kodu
+#else - jeśli dane obiekty nie spełniają określonego warunku to wykonaj inny fragment kodu
+
+#przykład zastosowania IF
+a <- 'Katowice'
+b <- 'Mikołów'
+
+if (a == b){
+  print ('Nazwy gmin są takie same')
+} else {
+  print ('Nazwy gmin są różne')
+}
+
+
+#dodanie dodatkowej kolumny do tabeli atrybutów obiektu 'gzm_gminy'
+#Kolumna 'pow_kat' przyjmuje wartość 1 jeśli powierzchnia gminy jest większa niż 60 km2.
+#W przeciwnym wypadku kolumna przyjmuje wartość 0.
+
+#Wykorzystanie funkcji 'ifelse'
+?ifelse #ifelse(warunek do spełnienia, wartość kolumny jeżeli prawda, wartość kolumny jeżeli fałsz)
+gzm_gminy$pow_kat <- ifelse(gzm_gminy$pow_km2 > 60, 1, 0)
+
+
+#Przykład
+#Wyeksportuj do osobnych plików shp tylko te gminy, których powierzchnia jest mniejsza niż 30 km2.
+
+
+#przykładowe rozwiązanie
+# pętla FOR oraz wyrażenie warunkowe IF
+
+for (i in 1:nrow(gzm_gminy)){ #dla każdego i w przedziale od 1 do liczba wierszy (gzm_gminy) [dla każdej gminy]
+  if (gzm_gminy[i, ]$pow_km2 < 30){  #jeśli powierzchnia gminy jest mniejsza niż 30 km2
+    gmina <- gzm_gminy[i, ] #wybranie i-tej gminy do osobnego obiektu pakietu sf
+    st_write(gmina, paste0(getwd(), '/gzm_gm_if/', gzm_gminy$nazwa_bpz[i], '.shp')) #zapisanie i-tej gminy
+  }
+}
+
+#Sprawdzenie - zapytanie: wybierz gminy o powierzchni poniżej 30 km2
+gzm_gminy_sel <- gzm_gminy %>% filter (pow_km2 < 30)
+print(gzm_gminy_sel$jpt_nazwa_)
+
+
+
+
+
+
+
+
+
+

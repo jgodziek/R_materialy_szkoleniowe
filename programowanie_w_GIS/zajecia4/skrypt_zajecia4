@@ -1,1 +1,203 @@
+library(sf) #dane wektorowe
+library(terra) #dane rastrowe
+library(stars) #dane wektorowe i rastrowe
+
+
+
+#ustawienie bieżącej ścieżki dostępu (working directory)
+setwd('ścieżka/dostępu/do/twojego/folderu')
+setwd('D:/JG/IEDS/_Dydaktyka/2023_24_sem_zimowy/programowanie_w_GIS/dane/Murcki')
+
+getwd() #wyświetlenie bieżącej ścieżki dostępu
+
+#wczytanie pliku z numerycznym modelem terenu (NMT)
+nmt <- rast('nmt_2022_M-34-63-A-c-3-2.asc')
+plot(nmt) #wyświetlenie NMT
+nmt #wyświetlenie informacji o warstwie rastrowej
+
+#wyświetlenie informacji o układzie współrzędnych
+#crs = coordinate reference system -> układ współrzędnych
+crs(nmt)
+
+#ustawienie układu współrzędnych do rastra
+set.crs(nmt, 'EPSG:2180')
+crs(nmt)
+
+
+#wczytanie pliku z numerycznym modelem pokrycia terenu (NMPT)
+nmpt <- rast('nmpt_2022_M-34-63-A-c-3-2.asc')
+
+crs(nmpt)
+set.crs(nmpt, 'EPSG:2180') #nadanie układu współrzędnych
+
+
+#przycinanie rastra do granicy pliku shapefile
+
+#wczytanie pliku shp
+obszar_badan <- st_read('obszar_badan.shp')
+plot(obszar_badan)
+
+nmt_obbad <- mask(nmt, obszar_badan) #przycinanie nmt (funkcja 'mask')
+plot(nmt_obbad)
+
+nmpt_obbad <- mask(nmpt, obszar_badan) #przycinanie nmt (funkcja 'mask')
+plot(nmpt_obbad)
+
+#zapisanie rastrów w formacie tif
+writeRaster(nmt_obbad, 'Murcki_nmt.tif')
+writeRaster(nmpt_obbad, 'Murcki_nmpt.tif')
+
+
+
+#obliczenie rastra z nachyleniami terenu (nachylenie w stopniach)
+#nachylenie terenu = slope
+#zapis rastra bezpośrednio do pliku tif (argument 'filename')
+?terrain
+slope <- terrain(nmt_obbad, #model terenu
+         v = 'slope', #nazwa pochodnej NMT (opcje: slope, aspect, TPI, TRI, roughness, flowdir)
+         unit = 'degrees', #jednostka rastra (opcje: degrees, radians)
+         filename = 'Murcki_slope.tif') #wynikowy plik tif (wraz ze ścieżką dostępu, jeśli nie ustawiliśmy ścieżki przez setwd())
+
+
+#obliczenie rastra z ekspozycją terenu (ekspozycja w stopniach)
+#ekspozycja = aspect
+#bez zapisania pliku tif
+aspect <- terrain(nmt_obbad, #model terenu
+                  v = 'aspect', #nazwa pochodnej NMT (opcje: slope, aspect, TPI, TRI, roughness, flowdir)
+                  unit = 'degrees') #jednostka rastra (opcje: degrees, radians)
+
+#z zapisaniem pliku tif
+aspect <- terrain(nmt_obbad, #model terenu
+                  v = 'aspect', #nazwa pochodnej NMT (opcje: slope, aspect, TPI, TRI, roughness, flowdir)
+                  unit = 'degrees', #jednostka rastra (opcje: degrees, radians)
+                  filename = 'Murcki_aspect.tif') #wynikowy plik tif (wraz ze ścieżką dostępu, jeśli nie ustawiliśmy ścieżki przez setwd())
+
+plot(aspect) #wyświetlenie rastra z ekspozycją
+
+
+#utworzenie rastra z rzeźbą cieniowaną
+?shade #sprawdzenie dokumentacji
+
+#1) utworzenie rastrów z nachyleniami i ekspozycjami w radianach
+slope_radians <- terrain(nmt_obbad, v = 'slope', unit = 'radians') #nachylenia
+aspect_radians <- terrain(nmt_obbad, v = 'aspect', unit = 'radians') #ekspozycje
+
+#2) funkcja "shade"
+shade(slope = slope_radians, aspect = aspect_radians,
+      angle = 45, #kąt padania promieni słonecznych 
+      direction = 315, #kierunek padania promieni słonecznych
+      filename = 'Murcki_cien.tif')
+
+###Cwiczenie 1 - utwórz raster cieniowany na podstawie numerycznego modelu pokrycia terenu.
+
+
+#reklasyfikacja rastra z ekspozycją
+#https://rdrr.io/cran/terra/man/classify.html #dokumentacja funkcji 'classify'
+
+#utworzenie macierzy reklasyfikacji
+#wartości w poszczególnych wierszach:
+#od: - do: - zamienia się na:
+#np. od: 0 - do: 45 - zamienia się na: 1
+
+#utworzenie wektora z wartościami granicznymi
+# stopnie / przypisana wartość / ekspozycja
+aspect_tabela <- c(0, 45, 1, # 0 - 45 / 1 / północna
+                   45, 135, 2, # 45 - 135 / 2 / wschodnia
+                   135, 225, 3, # 135 - 225 / 3 / południowa
+                   225, 315, 4, # 225 - 315 / 4 / zachodnia
+                   315, 360, 1) # 315 - 360 / 1 / północna
+
+#zamiana wektora na macierz
+aspect_macierz <- matrix(aspect_tabela, ncol=3, byrow=TRUE)
+
+#reklasyfikacja
+aspect_rcl <- classify(aspect, aspect_macierz)
+plot(aspect_rcl) #wyświetlenie wyniku
+
+#zapisanie zreklasyfikowanego rastra
+writeRaster(aspect_rcl, 'Murcki_aspect_rcl.tif')
+
+
+#obliczenie modelu wysokości pokrycia terenu (nmpt - nmt)
+#mr = model różnicowy
+
+mr_obbad <- nmpt_obbad - nmt_obbad
+
+#naprawienie błędu 'extents do not match'
+#źródło: https://gis.stackexchange.com/questions/440245/r-terramask-report-error-error-mask-extents-do-not-match
+
+#sprawdzenie położenia 'punktu startowego' rastra
+origin(nmt_obbad)
+origin(nmpt_obbad)
+#położenia nie pokrywają się
+
+#dostosowanie położenia pikseli rastra nmpt do rastra nmt
+?resample
+nmpt_obbad_rs <- resample(x = nmpt_obbad, #raster który chcemy naprawić
+                          y = nmt_obbad) #raster z położeniem pikseli do którego powinny zostać dostosowane piksele rastra x
+
+#ponowne obliczenie modelu różnicowego
+mr_obbad <- nmpt_obbad_rs - nmt_obbad
+plot(mr_obbad)
+
+writeRaster(mr_obbad, 'Murcki_mr.tif')
+
+
+#obliczenie charakterystyk rzeźby terenu z użyciem pętli FOR
+
+?terrain
+
+#wczytanie nazw pochodnych modelu terenu jako wektor
+#nazwy wzięte z dokumentacji funkcji 'terrain' (argument 'v')
+terrain_char <- c('TPI', 'TRI', 'roughness', 'flowdir')
+
+i= 1
+#wybór pierwszego elementu z wektora "terrain_char"
+terrain_char[i]
+
+#sklejanie ścieżki zapisu plików - funkcja 'paste0()'
+paste0('Murcki_', terrain_char[i], '.tif')
+
+
+for (i in 1:length(terrain_char)) #dla każdej liczby przypisanej obiektowi z wektora 'terrain_char' (następujące liczby: 1, 2, 3, 4)
+{
+  #oblicz pochodną modelu terenu
+  terrain(x = nmt_obbad, #model terenu z którego ma być obliczana pochodna
+          v = terrain_char[i], #nazwa pochodnej do obliczenia
+          filename = paste0('Murcki_', terrain_char[i], '.tif')) #zapisanie rastra (ścieżka dostępu i nazwa pliku tif)
+}
+
+
+
+#wyznaczenie poziomic
+
+#zamiana rastra nmt na obiekt pakietu stars
+nmt_obbad_stars <- st_as_stars(nmt_obbad)
+plot(nmt_obbad_stars)
+
+#sprawdzenie wartości maksymalnych i minimalnych nmt
+nmt_obbad
+
+#poziomice co 5 m, wartość minimalna: 280, wartość maksymalna: 360
+wart_poz <- seq(280, 360, 5) #wartości poziomic
+wart_poz
+
+#wyznaczenie poziomic (pakiet stars)
+poziomice <- st_contour(nmt_obbad_stars, #obiekt nmt pakietu stars
+                        contour_lines = T, #tworzy poziomice jako linie
+                        breaks = wart_poz) #wektor z wartościami poziomic
+
+
+plot(poziomice)
+
+st_write(poziomice, 'Murcki_poz5m.shp')
+
+
+
+
+
+
+
+
+
 

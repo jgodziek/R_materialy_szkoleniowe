@@ -184,35 +184,7 @@ for (i in 1:nrow(gzm_gminy)){
 
 
 
-#wyrażenie warunkowe IF
-#jeśli dane obiekty spełniają określony warunek to wykonaj dany fragment kodu
-#else - jeśli dane obiekty nie spełniają określonego warunku to wykonaj inny fragment kodu
-
-#przykład zastosowania IF
-a <- 'Katowice'
-b <- 'Mikołów'
-
-if (a == b){
-  print ('Nazwy gmin są takie same')
-} else {
-  print ('Nazwy gmin są różne')
-}
-
-
-#dodanie dodatkowej kolumny do tabeli atrybutów obiektu 'gzm_gminy'
-#Kolumna 'pow_kat' przyjmuje wartość 1 jeśli powierzchnia gminy jest większa niż 60 km2.
-#W przeciwnym wypadku kolumna przyjmuje wartość 0.
-
-#Wykorzystanie funkcji 'ifelse'
-?ifelse #ifelse(warunek do spełnienia, wartość kolumny jeżeli prawda, wartość kolumny jeżeli fałsz)
-gzm_gminy$pow_kat <- ifelse(gzm_gminy$pow_km2 > 60, 1, 0)
-
-
-#Przykład
-#Wyeksportuj do osobnych plików shp tylko te gminy, których powierzchnia jest mniejsza niż 30 km2.
-
-
-#przykładowe rozwiązanie
+#######
 # pętla FOR oraz wyrażenie warunkowe IF
 
 for (i in 1:nrow(gzm_gminy)){ #dla każdego i w przedziale od 1 do liczba wierszy (gzm_gminy) [dla każdej gminy]

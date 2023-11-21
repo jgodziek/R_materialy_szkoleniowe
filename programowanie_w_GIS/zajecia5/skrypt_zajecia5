@@ -1,0 +1,144 @@
+library(sf) #dane wektorowe
+library(terra) #dane rastrowe
+library(stars) #dane wektorowe i rastrowe
+
+
+#ustawienie bieżącej ścieżki dostępu (working directory)
+setwd('ścieżka/dostępu/do/twojego/folderu')
+
+
+#wczytanie pliku shp
+obszar_badan <- st_read('obszar_badan.shp')
+plot(obszar_badan)
+
+
+#wczytanie rastrów w formacie tif
+nmt_obbad <- rast('Murcki_nmt.tif')
+nmpt_obbad <- rast('Murcki_nmpt.tif')
+
+#obliczenie modelu wysokości pokrycia terenu (nmpt - nmt)
+#mr = model różnicowy
+
+mr_obbad <- nmpt_obbad - nmt_obbad
+
+#naprawienie błędu 'extents do not match'
+#źródło: https://gis.stackexchange.com/questions/440245/r-terramask-report-error-error-mask-extents-do-not-match
+
+#sprawdzenie położenia 'punktu startowego' rastra
+origin(nmt_obbad)
+origin(nmpt_obbad)
+#położenia nie pokrywają się
+
+#dostosowanie położenia pikseli rastra nmpt do rastra nmt
+?resample
+nmpt_obbad_rs <- resample(x = nmpt_obbad, #raster który chcemy naprawić
+                          y = nmt_obbad) #raster z położeniem pikseli do którego powinny zostać dostosowane piksele rastra x
+
+#ponowne obliczenie modelu różnicowego
+mr_obbad <- nmpt_obbad_rs - nmt_obbad
+
+#zapisanie
+writeRaster(mr_obbad, 'Murcki_MR.tif')
+
+
+#wyznaczenie poziomic
+
+#zamiana rastra nmt na obiekt pakietu stars
+nmt_obbad_stars <- st_as_stars(nmt_obbad)
+plot(nmt_obbad_stars)
+
+#sprawdzenie wartości maksymalnych i minimalnych nmt
+nmt_obbad
+
+#poziomice co 5 m, wartość minimalna: 280, wartość maksymalna: 360
+wart_poz <- seq(280, 360, 5) #wartości poziomic
+wart_poz
+
+#wyznaczenie poziomic (pakiet stars)
+poziomice <- st_contour(nmt_obbad_stars, #obiekt nmt pakietu stars
+                        contour_lines = T, #tworzy poziomice jako linie
+                        breaks = wart_poz) #wektor z wartościami poziomic
+
+plot(poziomice)
+
+st_write(poziomice, 'Murcki_poz5m.shp')
+
+#wczytanie warstwy z działkami
+dzialki <- st_read('Murcki_dzialki.shp')
+plot(dzialki)
+
+
+#przycięcie działek do granicy obszaru badań
+dzialki_obbad <- st_intersection(dzialki, obszar_badan)
+plot(dzialki_obbad)
+st_write(dzialki_obbad, 'Murcki_dzialki_obbad.shp')
+
+#zamiana typu geometrii z poligonów na linie
+dzialki_obbad_linie <- st_cast(dzialki_obbad, 'LINESTRING')
+dzialki_obbad_linie
+st_write(dzialki_obbad_linie, 'Murcki_dzialki_obbad_l.shp')
+
+
+#obliczenie statystyki strefowej
+mr_max <- zonal(x = mr_obbad, #raster, który używamy do obliczeń statystyki strefowej
+                z = vect(dzialki_obbad),  #poligony - strefy (muszą być to obiekty klasy SpatVector pakietu terra - dlatego używamy funkcji vect())
+                fun = 'max') #funkcja (w tym przypadku - maksimum)
+colnames(mr_max)[1] <- 'mr_max' #zmiana nazwy kolumny o indeksie 1
+
+
+#dołączenie informacji o maksymalnych wartościach modelu różnicowego do warstwy z działkami
+dzialki_obbad <- cbind(dzialki, mr_max)
+#funkcja 'cbind' (column bind) - liczba wierszy w obu łączonych ramkach danych musi być taka sama!
+#funkcja 'rbind' (row bind) - działa w podobny sposób, ale dla wierszy (liczba kolumn oraz nazwy kolumn w obu łączonych ramkach danych muszą być takie same!)
+
+
+
+
+#wyrażenie warunkowe IF
+#jeśli dane obiekty spełniają określony warunek to wykonaj dany fragment kodu
+#else - jeśli dane obiekty nie spełniają określonego warunku to wykonaj inny fragment kodu
+
+#przykład zastosowania IF
+a <- 'Katowice'
+b <- 'Katowice'
+
+if (a == b){
+  print ('Nazwy gmin są takie same')
+} else {
+  print ('Nazwy gmin są różne')
+}
+
+
+#dodanie dodatkowej kolumny do tabeli atrybutów obiektu 'gzm_gminy'
+#Kolumna 'pow_kat' przyjmuje wartość 1 jeśli powierzchnia gminy jest większa niż 60 km2.
+#W przeciwnym wypadku kolumna przyjmuje wartość 0.
+
+#Wykorzystanie funkcji 'ifelse'
+?ifelse #ifelse(warunek do spełnienia, wartość kolumny jeżeli prawda, wartość kolumny jeżeli fałsz)
+
+#statystyka opisowa - brak statystyk (kolumna ma typ tekstowy 'character')
+summary(dzialki_obbad$pow_m2)
+dzialki_obbad$pow_m2 <- as.numeric(dzialki_obbad$pow_m2) #zamiana na 'numeric'
+summary(dzialki_obbad$pow_m2) #statystyka opisowa
+
+options(scipen = 9999) #wyłączenie notacji wykładniczej
+
+ifelse(dzialki_obbad$pow_m2 > 3092, 1, 0)
+
+dzialki_obbad$dz_pow_kat <- ifelse(dzialki_obbad$pow_m2 > 3092, 1, 0)
+
+
+dzialki_obbad <- dplyr::select(dzialki_obbad, -c(dz_pow_kat)) #usunięcie kolumny
+
+
+
+
+
+
+
+
+
+
+
+
+

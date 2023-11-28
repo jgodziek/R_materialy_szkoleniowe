@@ -1,0 +1,64 @@
+library(sf)
+library(terra)
+library(stars)
+library(dplyr)
+
+
+
+#pobieranie danych z geoportalu w R
+
+library(rgugik)
+#https://kadyb.github.io/rgugik/ 
+
+
+setwd('D:/JG/IEDS/_Dydaktyka/2023_24_sem_zimowy/programowanie_w_GIS/dane/Murcki')
+
+
+#wczytanie pliku shp dla którego chcemy sprawdzić dostępność danych w geoportalu (GUGiK)
+rez <- st_read('Murcki_rezerwat.shp')
+plot(rez)
+
+#sprawdzenie dostępności danych z geoportalu
+dane_gugik <- DEM_request(rez)
+
+
+dane_do_pobrania <- dane_gugik %>% filter(year == 2011 & 
+                                            format == 'ARC/INFO ASCII GRID' &
+                                            resolution == '1.0 m')
+
+#pobranie plików do folderu - funkcja 'tile_download' (pakiet rgugik)
+?tile_download
+?utils::download.file
+tile_download(dane_do_pobrania, outdir = getwd(), method = 'curl')
+
+
+#drugi sposób
+#pobranie plików do folderu - funkcja 'download' (pakiet downloader) i pętla for
+url <- dane_do_pobrania$URL #extract url's for point clouds
+
+for (u in 1:length(url)){
+  downloader::download(url = url[u], 
+                       destfile = paste0(getwd(), '/', basename(url[u])), mode = 'wb')
+}
+
+
+
+
+#wczytanie pobranych danych do R
+r1 <- rast('D:/JG/IEDS/_Dydaktyka/2023_24_sem_zimowy/programowanie_w_GIS/dane/Murcki4266_94340_M-34-63-A-c-3-2.asc')
+r2 <- rast('D:/JG/IEDS/_Dydaktyka/2023_24_sem_zimowy/programowanie_w_GIS/dane/Murcki4266_96158_M-34-63-A-c-3-4.asc')
+
+#nadanie układu współrzędnych
+set.crs(r1, 'EPSG:2180')
+set.crs(r2, 'EPSG:2180')
+
+#połączenie rastrów
+r <- merge(r1, r2)
+plot(r)
+
+#przycięcie rastrów do granicy rezerwatu
+r_rez <- mask(r, rez)
+plot(r_rez)
+
+#zapis przetworzonego rastra dla obszaru rezerwatu
+writeRaster(r_rez, 'Murcki_rez_nmt.tif')

@@ -62,3 +62,10 @@ plot(r_rez)
 
 #zapis przetworzonego rastra dla obszaru rezerwatu
 writeRaster(r_rez, 'Murcki_rez_nmt.tif')
+
+
+#ANKIETA - opinia o zajęciach: https://forms.gle/Sx47fnbfKRz4asyJ9 
+
+
+
+

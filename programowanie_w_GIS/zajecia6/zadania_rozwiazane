@@ -1,0 +1,179 @@
+library(sf)
+library(terra)
+library(stars)
+library(dplyr)
+
+
+#zad. 1----------------------------------------------------------------------------------------
+
+dzialki <- st_read('Murcki_dzialki.shp') #wczytanie shp
+dzialki$obwod <- lwgeom::st_perimeter(dzialki) #obliczenie obwodu
+dzialki$obwod <- as.numeric(dzialki$obwod) #konwersja na typ danych liczbowych (numeric)
+
+
+#zad. 2-----------------------------------------------------------------------------------------
+mean(dzialki$obwod) #obliczenie średniej z kolumny
+
+
+#zad. 3-----------------------------------------------------------------------------------------
+#wybranie działek o obwodzie większym niż średni obwód
+dzialki_exp <- dzialki %>% filter(obwod < mean(dzialki$obwod))
+plot(dzialki_exp)
+
+#zapisanie do pliku shp
+st_write(dzialki_exp, 'dzialki_zad3.shp')
+
+
+#zad. 4-----------------------------------------------------------------------------------------
+
+#wczytanie modelu terenu
+nmt <- rast('Murcki_nmt.tif')
+
+#statystyka strefowa
+
+#1) maksymalne wartości NMT
+nmt_max <- zonal(x = nmt, z = vect(dzialki_exp), fun = 'max')
+colnames(nmt_max)[1] <- 'nmt_max' #zmiana nazwy kolumny o indeksie 1
+
+#1) minimalne wartości NMT
+nmt_min <- zonal(x = nmt, z = vect(dzialki_exp), fun = 'min')
+colnames(nmt_min)[1] <- 'nmt_min' #zmiana nazwy kolumny o indeksie 1
+
+
+#dołączenie kolumn z obliczeniami do warstwy z działkami
+dzialki_exp <- cbind(dzialki_exp, nmt_max, nmt_min)
+
+#obliczenie różnicy wysokości
+dzialki_exp$h_rozn <- dzialki_exp$nmt_max - dzialki_exp$nmt_min
+
+#utworzenie kolumny z kategoriami różnic wysokości
+dzialki_exp$kat_rozn <- ifelse(dzialki_exp$h_rozn < 10, 'mala', 'duza')
+
+#przykład 2 - trzy kategorie, podwójny ifelse()
+dzialki_exp$kat_rozn <- ifelse(dzialki_exp$h_rozn < 5, 'mala', 
+                               ifelse(dzialki_exp$h_rozn < 10, 'srednia', 'duza'))
+
+#eksport do shp
+st_write(dzialki_exp, 'Murcki_dzialki_obl_wys.shp')
+
+
+
+
+#zad. 5------------------------------------------------------------------------------------------
+
+#wczytanie rastra z nachyleniami
+slope <- rast('Murcki_slope.tif')
+
+#utworzenie wektora z wartościami granicznymi
+# wartość początkowa, wartość końcowa, wartość po reklasyfikacji
+slope_tabela <- c(0, 2, 1,
+                   2, 5, 2,
+                   5, 10, 3,
+                   10, 20, 4,
+                   20, 90, 5) 
+
+#zamiana wektora na macierz
+slope_macierz <- matrix(slope_tabela, ncol=3, byrow=TRUE)
+
+#reklasyfikacja
+slope_rcl <- classify(slope, slope_macierz)
+plot(slope_rcl) #wyświetlenie wyniku
+
+#zapisanie zreklasyfikowanego rastra
+writeRaster(slope_rcl, 'Murcki_slope_rcl.tif')
+
+
+#zad. 6--------------------------------------------------------------------------------------
+
+#wczytanie modelu terenu
+setwd('D:/JG/IEDS/_Dydaktyka/2023_24_sem_zimowy/programowanie_w_GIS/dane/Murcki')
+nmt <- rast('Murcki_nmt.tif')
+
+#zamiana rastra nmt na obiekt pakietu stars
+nmt_stars <- st_as_stars(nmt)
+
+#sprawdzenie wartości maksymalnych i minimalnych nmt
+minmax(nmt)
+
+#poziomice co 2 m, wartość minimalna: 280, wartość maksymalna: 360
+wart_poz <- seq(280, 360, 2) #wartości poziomic
+
+#wyznaczenie poziomic (pakiet stars)
+poziomice <- st_contour(nmt_stars, #obiekt nmt pakietu stars
+                        contour_lines = T, #tworzy poziomice jako linie
+                        breaks = wart_poz) #wektor z wartościami poziomic
+
+plot(poziomice)
+
+st_write(poziomice, 'Murcki_poz2m.shp')
+
+
+#zad. 7-------------------------------------------------------------------------------------
+
+#wczytanie gmin
+setwd('D:/JG/IEDS/_Dydaktyka/2023_24_sem_zimowy/programowanie_w_GIS/dane')
+
+gzm_gminy <- st_read('gzm_gminy.shp')
+
+#obliczenie powierzchni
+gzm_gminy$pow_km2 <- as.numeric(st_area(gzm_gminy)/1000000)
+
+library(stringr) #biblioteka do operacji na ciągach znakowych
+#usuniecie polskich znaków
+gzm_gminy$nazwa_bpz <- gzm_gminy$jpt_nazwa_ %>% str_replace_all(
+  c('ą' = 'a', 'ę' = 'e', 'ó' = 'o',
+    'Ś' = 'S', 'ś' = 's', ' ' = '_',
+    'ń'= 'n', 'ł' = 'l', 'Ł' = 'L',
+    'ż' = 'z', 'ź' = 'z'))
+
+#wybranie tylko gmin o powierzchni powyżej 70 km2
+gzm_gminy_sel <- gzm_gminy %>% filter(pow_km2 > 70)
+
+plot(gzm_gminy_sel)['geometry']
+
+#ścieżka do zapisu danych
+sciezka <- paste0(getwd(), '/for_test')
+
+for (i in 1:nrow(gzm_gminy_sel)){
+  gmina <- gzm_gminy_sel[i, ] #wybranie i-tej gminy do osobnego obiektu pakietu sf
+  st_write(gmina, paste0(sciezka, '/', gzm_gminy_sel$nazwa_bpz[i], '.shp')) #zapisanie i-tej gminy
+}
+
+
+#zad. 8-------------------------------------------------------------------------------
+
+#obliczenie charakterystyk rzeźby terenu z użyciem pętli FOR
+
+setwd('D:/JG/IEDS/_Dydaktyka/2023_24_sem_zimowy/programowanie_w_GIS/dane/Murcki')
+#wczytanie nmt
+nmt <- rast('Murcki_nmt.tif')
+
+
+?terrain
+
+#wczytanie nazw pochodnych modelu terenu jako wektor
+#nazwy wzięte z dokumentacji funkcji 'terrain' (argument 'v')
+terrain_char <- c('slope', 'aspect', 'TPI', 'TRI', 
+                  'TRIriley', 'TRIrmsd', 'roughness', 'flowdir')
+
+i= 1
+#wybór pierwszego elementu z wektora "terrain_char"
+terrain_char[i]
+
+#ustawienie ścieżki zapisu plików
+setwd('D:/JG/IEDS/_Dydaktyka/2023_24_sem_zimowy/programowanie_w_GIS/dane/Murcki/terrain')
+
+#sklejanie ścieżki zapisu plików - funkcja 'paste0()'
+paste0('Murcki_', terrain_char[i], '.tif')
+
+
+
+for (i in 1:length(terrain_char)) #dla każdej liczby przypisanej obiektowi z wektora 'terrain_char' (następujące liczby: 1, 2, 3, 4)
+{
+  #oblicz pochodną modelu terenu
+  terrain(x = nmt, #model terenu z którego ma być obliczana pochodna
+          v = terrain_char[i], #nazwa pochodnej do obliczenia
+          filename = paste0('Murcki_', terrain_char[i], '.tif')) #zapisanie rastra (ścieżka dostępu i nazwa pliku tif)
+}
+
+
